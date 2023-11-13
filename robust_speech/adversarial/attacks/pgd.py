@@ -82,11 +82,12 @@ def pgd_loop(
         assert eps_iter.dim() == 1
         eps_iter = eps_iter.unsqueeze(1)
     delta.requires_grad_()
-    for _ in range(nb_iter):
+    for i in range(nb_iter):
         batch.sig = wav_init + delta, wav_lens
         predictions = asr_brain.compute_forward(batch, rs.Stage.ATTACK)
         loss = asr_brain.compute_objectives(
             predictions, batch, rs.Stage.ATTACK)
+        # print(i, loss, 20*torch.log10(wav_init.pow(2).sum().sqrt() / delta.pow(2).sum().sqrt()).item())
         if minimize:
             loss = -loss
         loss.backward(inputs = delta)

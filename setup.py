@@ -27,8 +27,8 @@ setup(
     packages=setuptools.find_packages(),
     package_data={"robust_speech": ["version.txt", "log-config.yaml"]},
     install_requires=[
-        "torch>=1.8.0,<=1.11",
-        "transformers>=4.20.0",
+        # "torch>=1.8.0,<=1.11",
+        # "transformers>=4.20.0",
         "speechbrain @ git+https://github.com/RaphaelOlivier/speechbrain.git",
         "audlib @ git+https://github.com/RaphaelOlivier/pyaudlib.git",
     ],

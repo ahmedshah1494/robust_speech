@@ -149,6 +149,9 @@ def evaluate(hparams_file, run_opts, overrides):
         target_brain.hparams.wer_file = os.path.join(
             hparams["output_folder"], "wer_{}.txt".format(k)
         )
+        target_brain.hparams.cer_file = os.path.join(
+            hparams["output_folder"], "cer_{}.txt".format(k)
+        )
         target_brain.evaluate(
             test_datasets[k],
             test_loader_kwargs=hparams["test_dataloader_opts"],
