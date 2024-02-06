@@ -1,5 +1,5 @@
 # General information
-seed: 1001
+seed: 1002
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 root: !PLACEHOLDER
 tokenizers_folder: !ref <root>/tokenizers
@@ -8,25 +8,38 @@ tokenizers_folder: !ref <root>/tokenizers
 # and should be changed at the user's discretion
 # -------------------------------------------------------------
 # Attack information
-snr: 30
-nb_iter: 100
-attack_class: !name:robust_speech.adversarial.attacks.pgd.SNRPGDAttack
+nb_epochs: 10
+nb_iter: 20
+lr: 0.001
+snr: 1
+eps_item: 0.003
+order: 2
+time_universal: False
+
+delta: !new:robust_speech.adversarial.utils.TensorModule
+   size: (288000,)
+
+attack_class: !name:robust_speech.adversarial.attacks.universal.UniversalAttack
   targeted: False
-  snr: !ref <snr>
+  nb_epochs: !ref <nb_epochs>
   nb_iter: !ref <nb_iter>
+  lr: !ref <lr>
+  snr: !ref <snr>
+  eps_item: !ref <eps_item>
+  time_universal: !ref <time_universal>
+  univ_perturb: !ref <delta>
+  order: !ref <order>
 save_audio: False
+attack_name: universal
 
 # Model information
 model_name: deepspeech
-attack_name: pgd
 target_brain_class: !name:robust_speech.models.modules.deepspeech.DeepspeechCTCASR
 target_brain_hparams_file: !ref model_configs/deepspeech.yaml
-# source_brain_class: null
-# source_brain_hparams_file: null
+source_model_name: !ref <model_name>
+source_brain_class: !ref <target_brain_class>
+source_brain_hparams_file: !ref model_configs/<model_name>.yaml
 
-# Tokenizer information (compatible with target and source)
-# pretrained_tokenizer_path: !ref <root>/trainings/<model_name>
-# pretrained_tokenizer_path: facebook/wav2vec2-base-960h
 pretrained_tokenizer_path: !ref /ocean/projects/cis220031p/mshah1/audio_robustness_benchmark/deepspeech_ckps/
 # pretrained_tokenizer_path: facebook/wav2vec2-base-960h
 tokenizer: !new:speechbrain.dataio.encoder.CTCTextEncoder
@@ -42,11 +55,16 @@ pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
       tokenizer: !ref <pretrained_tokenizer_path>/tokenizer.ckpt
 # -------------------------------------------------------------
 
-output_folder: !ref <root>/attacks/<attack_name>/<model_name>-<snr>/<seed>
+output_folder: !ref <root>/attacks/<attack_name>/<source_model_name>-<snr>/<seed>
 wer_file: !ref <output_folder>/wer.txt
 save_folder: !ref <output_folder>
 log: !ref <output_folder>/log.txt
 save_audio_path: !ref <output_folder>/save
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+   checkpoints_dir: !ref <output_folder>
+   recoverables:
+      delta: !ref <delta>
 
 dataset_prepare_fct: !name:robust_speech.data.librispeech.prepare_librispeech
 dataio_prepare_fct: !name:robust_speech.data.dataio.dataio_prepare
@@ -58,14 +76,16 @@ csv_folder: !ref <data_folder>/csv # e.g, /localscratch/LibriSpeech
 # then data_folder_rirs should be /localscratch/xxx_corpus
 # otherwise the dataset will automatically be downloaded
 test_splits: ["test-clean"]
+train_splits: ["dev-clean"]
 skip_prep: True
 ckpt_interval_minutes: 15 # save checkpoint every N min
-data_csv_name: test-clean
+data_csv_name: dev-clean
 test_csv:
    - !ref <data_folder>/csv/<data_csv_name>.csv
+train_csv: !ref <data_folder>/csv/<data_csv_name>.csv
 batch_size: 1 # This works for 2x GPUs with 32GB
-avoid_if_longer_than: 24.0
-sorting: random
+avoid_if_longer_than: 14.0
+sorting: ascending
 
 # Feature parameters
 sample_rate: 16000
@@ -74,11 +94,14 @@ n_mels: 80
 
 # Decoding parameters (only for text_pipeline)
 blank_index: 0
-bos_index: -1
-eos_index: -2
+bos_index: 1
+eos_index: 2
 
 test_dataloader_opts:
+    batch_size: 1
+train_dataloader_opts:
     batch_size: 1
 
 logger: !new:speechbrain.utils.train_logger.FileTrainLogger
     save_file: !ref <log>
+    

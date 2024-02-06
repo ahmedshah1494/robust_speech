@@ -5,14 +5,13 @@
 # ################################
 
 root: !PLACEHOLDER
-model_label: "large-960h"
-model_name: !ref wav2vec2-<model_label>
+model_name: !ref mms-1b-fl102
 hf_model_name: !ref facebook/<model_name>
 output_folder: !ref <root>/trainings/<model_name>
 wer_file: !ref <output_folder>/wer.txt
 save_folder: !ref <output_folder>
 train_log: !ref <output_folder>/train_log.txt
-
+language: spa
 pretrained_path: !ref <output_folder>
 
 attack_class: null
@@ -55,10 +54,12 @@ model: !new:torch.nn.ModuleList
    - [!ref <placeholder_model>]
 
 tokenizer: !apply:transformers.AutoTokenizer.from_pretrained
-   - !ref <hf_model_name>
+   pretrained_model_name_or_path: !ref <hf_model_name>
+   target_lang: !ref <language>
 
 processor: !apply:transformers.AutoProcessor.from_pretrained
-   - !ref <hf_model_name>
+   pretrained_model_name_or_path: !ref <hf_model_name>
+   target_lang: !ref <language>
 
 compute_features: null
 
@@ -71,6 +72,6 @@ cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
    split_tokens: True
 ser_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
    merge_tokens: True
-fp16: true
+fp16: false
 
 voting_module: null
