@@ -37,6 +37,7 @@ def dataio_prepare(hparams):
 
     train_data = None
     if "train_csv" in hparams:
+        print(hparams["train_csv"], data_folder)
         train_data = sb.dataio.dataset.DynamicItemDataset.from_csv(
             csv_path=hparams["train_csv"],
             replacements={"data_root": data_folder},
@@ -116,6 +117,8 @@ def dataio_prepare(hparams):
     # We get the tokenizer as we need it to encode the labels when creating
     # mini-batches.
     tokenizer = hparams["tokenizer"]
+    if isinstance(tokenizer, transformers.Wav2Vec2CTCTokenizer) and (tokenizer.vocab != tokenizer.encoder):
+        tokenizer.set_target_lang(hparams['lang'])
 
     # 2. Define audio pipeline:
     @sb.utils.data_pipeline.takes("wav")

@@ -7,7 +7,7 @@ import speechbrain as sb
 import torch
 import torch.nn as nn
 import string
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, WhisperProcessor, Wav2Vec2ForCTC
 import librosa
 
 import robust_speech as rs
@@ -22,6 +22,10 @@ class HuggingFaceASR(AdvASRBrain):
     """
     HuggingFace ASR model
     """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if isinstance(self.modules.model, Wav2Vec2ForCTC) and hasattr(self.hparams, "language"):
+            self.modules.model.load_adapter(self.hparams.language, force_reload=False)
 
     def eval_forward(self, wavs, tokens, options, loss_options):
         model: PreTrainedModel = self.modules.model
@@ -33,10 +37,14 @@ class HuggingFaceASR(AdvASRBrain):
             #logits = result["logits"]
             #pred_tokens = logits.argmax(dim=-1)
             if model.can_generate():
-                pred_tokens = model.generate(wavs.to(dtype), **options)
+                genkwargs = {}
+                if isinstance(self.hparams.processor, WhisperProcessor):
+                    lang = getattr(self.hparams, "language", "english")
+                    genkwargs['forced_decoder_ids'] = self.hparams.processor.get_decoder_prompt_ids(language=lang, task="transcribe")
+                pred_tokens = model.generate(wavs.to(dtype), **options, **genkwargs)
             else:
                 pred_tokens = result["logits"].argmax(dim=-1)
-        return loss, pred_tokens
+        return loss.reshape(-1), pred_tokens
     
     def train_attack_forward(self, wavs, tokens, options, loss_options):
         model: PreTrainedModel = self.modules.model
@@ -45,7 +53,7 @@ class HuggingFaceASR(AdvASRBrain):
         #logits = self.modules.whisper.model.transcribe(wavs[0], beam_size=1)
         logits = result["logits"]
         pred_tokens = logits.argmax(dim=-1)
-        return loss, pred_tokens
+        return loss.reshape(-1), pred_tokens
 
     def compute_forward(self, batch, stage):
         """Forward computations from the waveform batches to the output probabilities."""
@@ -154,6 +162,8 @@ class HuggingFaceASR(AdvASRBrain):
             # if adv and targeted:
                 # print(" ".join(predicted_words[0]))
                 #print(" ".join(target_words[0]))
+        if reduction == 'mean':
+            loss = loss.mean()
         return loss
 
     def init_optimizers(self):
