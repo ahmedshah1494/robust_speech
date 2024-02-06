@@ -13,6 +13,7 @@ and Seq2Seq
 """
 
 import logging
+import string
 
 import speechbrain as sb
 import torch
@@ -80,14 +81,14 @@ class DeepspeechCTCASR(CTCASR):
             )
         else:
             p_tokens = None
-        return p_ctc, out_lens_frac, p_tokens
+        return p_ctc, p_tokens, out_lens_frac
 
     def compute_objectives(
         self, predictions, batch, stage, adv=False, targeted=False, reduction="mean"
     ):
         """Computes the loss (CTC+NLL) given predictions and targets."""
 
-        p_ctc, wav_lens, predicted = predictions
+        p_ctc, predicted, wav_lens = predictions
 
         ids = batch.id
         tokens_eos, tokens_eos_lens = batch.tokens_eos
@@ -108,7 +109,10 @@ class DeepspeechCTCASR(CTCASR):
 
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
             # Decode token terms to words
-            predicted_words = [p[0].split() for p in predicted]
+            predicted = [p[0] for p in predicted]
+            predicted_words = [p.split() for p in predicted]
+            target = [wrd.upper().translate(str.maketrans(
+                '', '', string.punctuation)) for wrd in batch.wrd]
             target_words = [wrd.split(" ") for wrd in batch.wrd]
 
             if adv:
@@ -117,8 +121,10 @@ class DeepspeechCTCASR(CTCASR):
                         ids, predicted_words, target_words
                     )
                     self.adv_cer_metric_target.append(
-                        ids, predicted_words, target_words
+                        ids, predicted, target
                     )
+                    self.adv_ser_metric_target.append(
+                        ids, predicted, target)
                 else:
                     self.adv_wer_metric.append(
                         ids, predicted_words, target_words)
@@ -131,6 +137,16 @@ class DeepspeechCTCASR(CTCASR):
                 print('cer =', self.cer_metric.summarize())
 
         return loss
+    
+    def on_stage_end(self, stage, stage_loss, epoch, stage_adv_loss=None, stage_adv_loss_target=None):
+        super().on_stage_end(stage, stage_loss, epoch, stage_adv_loss, stage_adv_loss_target)
+        if stage == sb.Stage.TEST:
+            with open(self.hparams.wer_file.replace("wer", "cer"), "w") as cer:
+                self.cer_metric.write_stats(cer)
+            with open(f'{self.hparams.wer_file.replace("wer", "cer_adv")}', "w") as cer:
+                self.adv_cer_metric.write_stats(cer)
+            with open(f'{self.hparams.wer_file.replace("wer", "wer_adv")}', "w") as wer:
+                self.adv_wer_metric.write_stats(wer)
 
 def get_deepspeech_model():    
     model = DeepSpeech.load_from_checkpoint('/ocean/projects/cis220031p/mshah1/audio_robustness_benchmark/deepspeech_ckps/librispeech_pretrained_v3.ckpt')
