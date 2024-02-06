@@ -12,6 +12,8 @@ from tqdm import tqdm
 from speechbrain.utils.edit_distance import wer_details_for_batch
 from robust_speech.models.seq2seq import S2SASR
 from robust_speech.models.ctc import CTCASR
+from robust_speech.models.modules.deepspeech import DeepspeechCTCASR
+from robust_speech.models.sb_hf_binding import HuggingFaceASR
 
 import robust_speech as rs
 from robust_speech.adversarial.attacks.attacker import TrainableAttacker
@@ -73,7 +75,8 @@ class UniversalAttack(TrainableAttacker):
     def __init__(
         self,
         asr_brain,
-        eps=0.3,
+        # eps=0.3,
+        snr = 50,
         eps_item=0.1,
         nb_epochs=10,
         nb_iter=40,
@@ -89,7 +92,7 @@ class UniversalAttack(TrainableAttacker):
     ):
         self.clip_min = clip_min
         self.clip_max = clip_max
-        self.eps = eps
+        # self.eps = eps
         self.eps_item = eps_item
         self.lr = lr
         self.nb_iter = nb_iter
@@ -100,6 +103,7 @@ class UniversalAttack(TrainableAttacker):
         self.asr_brain = asr_brain
         self.train_mode_for_backward = train_mode_for_backward
         self.time_universal = time_universal
+        self.rel_eps = torch.pow(torch.tensor(10.0), float(snr) / 20)
 
         self.univ_perturb = univ_perturb
         if self.univ_perturb is None:
@@ -107,17 +111,18 @@ class UniversalAttack(TrainableAttacker):
             self.univ_perturb = rs.adversarial.utils.TensorModule(
                 size=(len_delta,))
 
-        assert isinstance(self.eps, torch.Tensor) or isinstance(
-            self.eps, float)
-
     def fit(self, loader):
         return self._compute_universal_perturbation(loader)
 
     def _compute_universal_perturbation(self, loader):
         if isinstance(self.asr_brain, S2SASR):
             decode = self.asr_brain.tokenizer.decode_ids
+        elif isinstance(self.asr_brain, DeepspeechCTCASR):
+            decode = lambda x: x[0]
         elif isinstance(self.asr_brain, CTCASR):
-            decode = self.asr_brain.tokenizer.decode_ids
+            decode = self.asr_brain.tokenizer.decode_ndim
+        elif isinstance(self.asr_brain, HuggingFaceASR):
+            decode = lambda x : self.asr_brain.tokenizer.decode(x, skip_special_tokens=True)
         else:
             raise NotImplementedError
 
@@ -135,6 +140,14 @@ class UniversalAttack(TrainableAttacker):
         #####HYPERPARAM for fixed delta#####
         use_time_universal = self.time_universal
         ####################################
+
+        print('Estimating average eps over all training samples')
+        self.eps = 0.
+        for idx, batch in enumerate(tqdm(loader, dynamic_ncols=True)):
+            batch = batch.to(self.asr_brain.device)
+            batch_eps = reverse_bound_from_rel_bound(batch, self.rel_eps).min()
+            self.eps = (self.eps*idx + batch_eps)/(idx+1)
+        print(f'EPS={self.eps}')
 
         while epoch < self.nb_epochs:
             print(f'{epoch}s epoch')
@@ -158,7 +171,7 @@ class UniversalAttack(TrainableAttacker):
                     else:
                         delta_x[: delta.shape[0]] = delta.detach()
                 delta_batch = delta_x.unsqueeze(0).expand(wav_init.size())
-                _, _, predicted_tokens_origin = self.asr_brain.compute_forward(
+                _, predicted_tokens_origin, _ = self.asr_brain.compute_forward(
                     batch, rs.Stage.ADVTRUTH)
                 predicted_words_origin = [
                     decode(utt_seq).split(" ")
@@ -172,7 +185,7 @@ class UniversalAttack(TrainableAttacker):
                 r.requires_grad_()
 
                 batch.sig = wav_init + delta_batch, wav_lens
-                _, _, predicted_tokens_adv = self.asr_brain.compute_forward(
+                _, predicted_tokens_adv, _ = self.asr_brain.compute_forward(
                     batch, rs.Stage.ADVTARGET)
                 predicted_words_adv = [
                     decode(utt_seq).split(" ")
@@ -218,7 +231,7 @@ class UniversalAttack(TrainableAttacker):
                     # print("r's mean : ",torch.mean(r).data)
                     r.grad.data.zero_()
 
-                    _, _, predicted_tokens_adv = self.asr_brain.compute_forward(
+                    _, predicted_tokens_adv, _ = self.asr_brain.compute_forward(
                         batch, rs.Stage.ADVTARGET)
                     predicted_words_adv = [
                         decode(utt_seq).split(" ")
@@ -271,7 +284,7 @@ class UniversalAttack(TrainableAttacker):
 
                 # CER(Xi)
                 delta_batch = delta_x.unsqueeze(0).expand(wav_init.size())
-                _, _, predicted_tokens_origin = self.asr_brain.compute_forward(
+                _, predicted_tokens_origin, _ = self.asr_brain.compute_forward(
                     batch, rs.Stage.ADVTRUTH)
 
                 predicted_words_origin = [
@@ -280,8 +293,8 @@ class UniversalAttack(TrainableAttacker):
                 ]
 
                 # CER(Xi + v)
-                batch.sig = wav_init + delta_batch, wav_lens
-                _, _, predicted_tokens_adv = self.asr_brain.compute_forward(
+                batch.sig = wav_init + delta_batch.to(self.asr_brain.device), wav_lens
+                _, predicted_tokens_adv, _ = self.asr_brain.compute_forward(
                     batch, rs.Stage.ADVTRUTH)
                 predicted_words_adv = [
                     decode(utt_seq).split(" ")
