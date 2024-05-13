@@ -80,9 +80,9 @@ class TrfASR(AdvASRBrain):
                 current_epoch = self.hparams.epoch_counter.current
                 # for the sake of efficiency, we only perform beamsearch with limited capacity
                 # and no LM to give user some idea of how the AM is doing
-                hyps, _ = self.hparams.valid_search(enc_out.detach(), wav_lens)
+                hyps = self.hparams.valid_search(enc_out.detach(), wav_lens)[0]
             else:
-                hyps, _ = self.hparams.test_search(enc_out.detach(), wav_lens)
+                hyps = self.hparams.test_search(enc_out.detach(), wav_lens)[0]
 
         return p_ctc, p_seq, wav_lens, hyps
 

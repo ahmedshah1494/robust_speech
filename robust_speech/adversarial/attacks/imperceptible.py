@@ -353,6 +353,7 @@ class ImperceptibleASRAttack(Attacker):
                         break
 
                 else:
+                    print(iter_1st_stage_idx, loss_eval)
                     if loss_eval[local_batch_size_idx].item() < best_loss_1st_stage[local_batch_size_idx]:
                         best_loss_1st_stage[local_batch_size_idx] = loss_eval[local_batch_size_idx].item()
                         best_adv_input[local_batch_size_idx] = masked_adv_input[local_batch_size_idx].clone()
@@ -411,6 +412,8 @@ class ImperceptibleASRAttack(Attacker):
 
         loss_eval = self.asr_brain.compute_objectives(
             val_predictions, batch, sb.Stage.TRAIN, reduction="batch")
+        if loss_eval.dim() == 0:
+            loss_eval = loss_eval.unsqueeze(0)
         return loss_backward, loss_eval, local_delta, decoded_output, masked_adv_input, local_delta_rescale
 
     def _attack_2nd_stage(
@@ -509,7 +512,7 @@ class ImperceptibleASRAttack(Attacker):
 
             # Do optimization
             self.optimizer_2.step()
-
+            print(iter_2nd_stage_idx, loss)
             # Save the best adversarial example and adjust the alpha
             # coefficient
             for local_batch_size_idx in range(local_batch_size):
@@ -583,7 +586,8 @@ class ImperceptibleASRAttack(Attacker):
                 delta=local_delta_rescale[i, : real_lengths[i]],
                 original_max_psd=original_max_psd_batch[i],
             )
-
+            psd_transform_delta = psd_transform_delta.squeeze(0)
+            print(local_delta_rescale.shape, psd_transform_delta.shape, theta_batch[i].shape)
             loss = torch.mean(
                 relu(psd_transform_delta -
                      theta_batch[i].to(self.asr_brain.device))
@@ -746,14 +750,16 @@ class ImperceptibleASRAttack(Attacker):
             win_length=self.win_length,
             center=False,
             window=window_fn(self.win_length).to(self.asr_brain.device),
+            return_complex=False
         ).to(self.asr_brain.device)
-
         # Take abs of complex STFT results
         transformed_delta = torch.sqrt(torch.sum(torch.square(delta_stft), -1))
 
         # Compute the psd matrix
         psd = (8.0 / 3.0) * transformed_delta / self.win_length
         psd = psd**2
+        
+        print(delta.shape, delta_stft.shape, 'psd:',psd.shape)
         psd = (
             torch.pow(
                 torch.tensor(10.0).type(torch.float32),

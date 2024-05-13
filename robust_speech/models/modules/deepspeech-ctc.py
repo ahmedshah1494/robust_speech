@@ -7,6 +7,7 @@ from robust_speech.models.sb_hf_binding import HuggingFaceASR
 import speechbrain as sb
 import robust_speech as rs
 import string
+import os
 
 
 class DeepSpeechASR(HuggingFaceASR):
@@ -76,7 +77,7 @@ class DeepSpeechASR(HuggingFaceASR):
         return loss
 
 def get_deepspeech_model():    
-    model = DeepSpeech.load_from_checkpoint('/ocean/projects/cis220031p/mshah1/audio_robustness_benchmark/deepspeech_ckps/librispeech_pretrained_v3.ckpt')
+    model = DeepSpeech.load_from_checkpoint(f'{os.environ["SRB_ROOT"]}/deepspeech_ckps/librispeech_pretrained_v3.ckpt')
     return model
 
 class DeepSpeechFeatureExtractor(object):

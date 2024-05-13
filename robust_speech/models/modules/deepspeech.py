@@ -22,8 +22,7 @@ import robust_speech as rs
 from robust_speech.models.ctc import CTCASR
 from torchaudio.transforms import Spectrogram
 from torchaudio.functional import spectrogram
-from deepspeech_pytorch.model import DeepSpeech
-from deepspeech_pytorch.decoder import GreedyDecoder
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +147,9 @@ class DeepspeechCTCASR(CTCASR):
             with open(f'{self.hparams.wer_file.replace("wer", "wer_adv")}', "w") as wer:
                 self.adv_wer_metric.write_stats(wer)
 
-def get_deepspeech_model():    
-    model = DeepSpeech.load_from_checkpoint('/ocean/projects/cis220031p/mshah1/audio_robustness_benchmark/deepspeech_ckps/librispeech_pretrained_v3.ckpt')
+def get_deepspeech_model():
+    from deepspeech_pytorch.model import DeepSpeech
+    model = DeepSpeech.load_from_checkpoint(f'{os.environ["SRB_ROOT"]}/deepspeech_ckps/librispeech_pretrained_v3.ckpt')
     return model
 
 class DeepSpeechFeatureExtractor(torch.nn.Module):
@@ -186,5 +186,6 @@ class DeepSpeechFeatureExtractor(torch.nn.Module):
         return spec, torch.LongTensor([spec.shape[-1]])
 
 def get_decoder(model):
+    from deepspeech_pytorch.decoder import GreedyDecoder
     decoder = GreedyDecoder(model.labels)
     return decoder
