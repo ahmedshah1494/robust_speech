@@ -111,10 +111,10 @@ class DeepspeechCTCASR(CTCASR):
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
             # Decode token terms to words
             predicted = [p[0] for p in predicted]
-            predicted_words = [p.split() for p in predicted]
+            predicted_words = [p.upper().split() for p in predicted]
             target = [wrd.upper().translate(str.maketrans(
                 '', '', string.punctuation)) for wrd in batch.wrd]
-            target_words = [wrd.split(" ") for wrd in batch.wrd]
+            target_words = [wrd.upper().split(" ") for wrd in batch.wrd]
 
             if adv:
                 if targeted:
