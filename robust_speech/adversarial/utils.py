@@ -11,9 +11,9 @@ import torch.nn as nn
 import torchaudio
 from speechbrain.dataio.batch import PaddedBatch  # noqa
 from speechbrain.dataio.preprocess import AudioNormalizer
-from speechbrain.pretrained import EncoderDecoderASR
+from speechbrain.inference.ASR import EncoderDecoderASR
 import sentencepiece
-from speechbrain.pretrained.fetching import fetch
+from speechbrain.utils.fetching import fetch
 from speechbrain.utils.data_utils import split_path
 
 

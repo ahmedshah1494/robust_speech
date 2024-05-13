@@ -29,7 +29,7 @@ setup(
     install_requires=[
         # "torch>=1.8.0,<=1.11",
         # "transformers>=4.20.0",
-        "speechbrain @ git+https://github.com/RaphaelOlivier/speechbrain.git",
+ #       "speechbrain @ git+https://github.com/RaphaelOlivier/speechbrain.git",
         "audlib @ git+https://github.com/RaphaelOlivier/pyaudlib.git",
     ],
     python_requires=">=3.8",
