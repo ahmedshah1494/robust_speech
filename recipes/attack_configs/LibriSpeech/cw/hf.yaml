@@ -22,7 +22,7 @@ attack_class: !name:robust_speech.adversarial.attacks.cw.ASRCarliniWagnerAttack
    max_iter: !ref <max_iter>
    const: !ref <const>
    train_mode_for_backward: False
-save_audio: False
+save_audio: True
 attack_name: cw
 
 # Model information
@@ -40,8 +40,8 @@ tokenizer: !apply:transformers.AutoTokenizer.from_pretrained
    - !ref <hf_model_name>
 
    # -------------------------------------------------------------
-
-output_folder: !ref <root>/attacks/<attack_name>/<source_model_name>-<eps>/<seed>
+dataset: !ref LibriSpeech
+output_folder: !ref <root>/attacks/<attack_name>/<dataset>/<model_name>/<seed>
 wer_file: !ref <output_folder>/wer.txt
 save_folder: !ref <output_folder>
 log: !ref <output_folder>/log.txt
@@ -51,7 +51,7 @@ dataset_prepare_fct: !name:robust_speech.data.librispeech.prepare_librispeech
 dataio_prepare_fct: !name:robust_speech.data.dataio.dataio_prepare
 
 # Data files
-data_folder: !ref <root>/data/LibriSpeech # e.g, /localscratch/LibriSpeech
+data_folder: !ref <root>/data/<dataset> # e.g, /localscratch/LibriSpeech
 csv_folder: !ref <data_folder>/csv # e.g, /localscratch/LibriSpeech
 # If RIRS_NOISES dir exists in /localscratch/xxx_corpus/RIRS_NOISES
 # then data_folder_rirs should be /localscratch/xxx_corpus
