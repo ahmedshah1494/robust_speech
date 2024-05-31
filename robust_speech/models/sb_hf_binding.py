@@ -64,7 +64,19 @@ class HuggingFaceASR(AdvASRBrain):
         wavs, wav_lens = batch.sig
         # if self.filter is not None:
         #     wavs = self.filter(wavs)
-        tokens_bos, _ = batch.tokens_bos
+        if hasattr(batch, "tokens"):
+            tokens_bos, _ = batch.tokens_bos
+            tokens, _ = batch.tokens
+        else:
+            wrd = batch.wrd
+            tokenizer = self.hparams.tokenizer
+            tokens_list = [tokenizer.encode(w) for w in wrd]
+            if hasattr(self.hparams, "bos_index"):
+                tokens_bos = torch.LongTensor([[self.hparams["bos_index"]] + t for t in tokens_list]).to(self.device)
+            if hasattr(self.hparams, "eos_index"):
+                tokens_eos = torch.LongTensor([t + [self.hparams["eos_index"]] for t in tokens_list]).to(self.device)
+            tokens = torch.LongTensor(tokens_list).to(self.device)
+
         # wavs, wav_lens = wavs.to(self.device), wav_lens.to(self.device)
         # Add augmentation if specified
         options = {}
@@ -87,7 +99,6 @@ class HuggingFaceASR(AdvASRBrain):
         
         feats = self.hparams.compute_features(wavs) if self.hparams.compute_features is not None else wavs
         # Forward pass
-        tokens, _ = batch.tokens
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
             # Decode token terms to words
             loss, pred_tokens = self.eval_forward(
@@ -114,14 +125,6 @@ class HuggingFaceASR(AdvASRBrain):
         loss, pred_tokens, save_stage = predictions
 
         ids = batch.id
-        tokens_eos, tokens_eos_lens = batch.tokens_eos
-        tokens, tokens_lens = batch.tokens
-        if hasattr(self.modules, "env_corrupt") and stage == sb.Stage.TRAIN:
-            tokens_eos = torch.cat([tokens_eos, tokens_eos], dim=0)
-            tokens_eos_lens = torch.cat(
-                [tokens_eos_lens, tokens_eos_lens], dim=0)
-            tokens = torch.cat([tokens, tokens], dim=0)
-            tokens_lens = torch.cat([tokens_lens, tokens_lens], dim=0)
 
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
             # Decode token terms to words
