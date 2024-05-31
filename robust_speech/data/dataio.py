@@ -22,6 +22,7 @@ import torchaudio
 from speechbrain.dataio.dataio import load_pkl, merge_csvs, save_pkl
 from speechbrain.utils.data_utils import download_file, get_all_files
 import transformers
+import tokenizers
 logger = logging.getLogger(__name__)
 OPT_FILE = "opt_librispeech_prepare.pkl"
 SAMPLERATE = 16000
@@ -117,7 +118,7 @@ def dataio_prepare(hparams):
     # We get the tokenizer as we need it to encode the labels when creating
     # mini-batches.
     tokenizer = hparams["tokenizer"]
-    if isinstance(tokenizer, transformers.Wav2Vec2CTCTokenizer) and (tokenizer.vocab != tokenizer.encoder):
+    if isinstance(tokenizer, transformers.Wav2Vec2CTCTokenizer) and (tokenizer.vocab != tokenizer.encoder) and (hparams['lang'] != ''):
         tokenizer.set_target_lang(hparams['lang'])
 
     # 2. Define audio pipeline:
@@ -219,7 +220,7 @@ def dataio_prepare(hparams):
             ["id", "sig", "wrd", "tokens_bos", "tokens_eos", "tokens"],
         )
 
-    else:
+    elif isinstance(tokenizer, (tokenizers.Tokenizer, transformers.PreTrainedTokenizerFast, transformers.PreTrainedTokenizer)):
         # assert isinstance(tokenizer, transformers.PreTrainedTokenizerFast) or isinstance(
         #    tokenizer, transformers.PreTrainedTokenizer)
 
@@ -247,6 +248,18 @@ def dataio_prepare(hparams):
         sb.dataio.dataset.set_output_keys(
             datasets,
             ["id", "sig", "wrd", "tokens_bos", "tokens_eos", "tokens"],
+        )
+    else:
+        @sb.utils.data_pipeline.takes("wrd")
+        @sb.utils.data_pipeline.provides("wrd")
+        def text_pipeline(wrd):
+            yield wrd
+        
+        sb.dataio.dataset.add_dynamic_item(datasets, text_pipeline)
+        # 4. Set output:
+        sb.dataio.dataset.set_output_keys(
+            datasets,
+            ["id", "sig", "wrd"],
         )
 
     train_batch_sampler = None
