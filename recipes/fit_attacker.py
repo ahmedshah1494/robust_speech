@@ -12,6 +12,7 @@ from speechbrain.utils.distributed import run_on_main
 
 import robust_speech as rs
 from robust_speech.adversarial.brain import AdvASRBrain
+from robust_speech.adversarial.attacks.universal import UniversalAttack
 
 
 def read_brains(
@@ -102,7 +103,16 @@ def fit(hparams_file, run_opts, overrides):
         # instanciating with the source model if there is one.
         # Otherwise, AdvASRBrain will handle instanciating the attacker with
         # the target model.
-        attacker = attacker(source_brain)
+        if issubclass(attacker.func, UniversalAttack):
+            ckptr = hparams['checkpointer']
+            delta = hparams['delta']
+            ckp = ckptr.recover_if_possible()
+            if ckp is not None:
+                ckptr.load_checkpoint(ckp)
+            kwargs = {'univ_perturb':delta}
+        else:
+            kwargs = {}
+        attacker = attacker(source_brain, **kwargs)
 
     # Target model initialization
     target_brain_class = hparams["target_brain_class"]
@@ -120,7 +130,11 @@ def fit(hparams_file, run_opts, overrides):
         tokenizer=tokenizer,
     )
     target_brain.logger = hparams["logger"]
-    target_brain.hparams.train_logger = hparams["logger"]
+    if isinstance(target_brain, rs.adversarial.brain.EnsembleASRBrain):
+        for b in target_brain.asr_brains:
+            b.hparams.train_logger = hparams["logger"]
+    else:
+        target_brain.hparams.train_logger = hparams["logger"]
 
     target = hparams["target_sentence"] if "target_sentence" in hparams else None
     load_audio = hparams["load_audio"] if "load_audio" in hparams else None
