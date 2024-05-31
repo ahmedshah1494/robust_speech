@@ -5,9 +5,9 @@
 # ################################
 
 root: !PLACEHOLDER
-model_label: "large-xlsr-53-spanish"
-model_name: !ref wav2vec2-<model_label>
-hf_model_name: !ref facebook/<model_name>
+model_label: "base"
+model_name: !ref whisper-<model_label>
+hf_model_name: !ref openai/<model_name>
 output_folder: !ref <root>/trainings/<model_name>
 wer_file: !ref <output_folder>/wer.txt
 save_folder: !ref <output_folder>
@@ -39,7 +39,7 @@ epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
    #speeds: [95, 100, 105]
 
 
-asr_model: !apply:transformers.AutoModelForCTC.from_pretrained
+whisper: !apply:transformers.WhisperForConditionalGeneration.from_pretrained
    - !ref <hf_model_name>
 
 # need some kind of model for the checkpoint
@@ -48,7 +48,7 @@ placeholder_model: !new:speechbrain.nnet.linear.Linear
    n_neurons: 8
 
 modules:
-   model: !ref <asr_model>
+   model: !ref <whisper>
    placeholder_model: !ref <placeholder_model>
 
 model: !new:torch.nn.ModuleList
@@ -60,7 +60,9 @@ tokenizer: !apply:transformers.AutoTokenizer.from_pretrained
 processor: !apply:transformers.AutoProcessor.from_pretrained
    - !ref <hf_model_name>
 
-compute_features: null
+compute_features: !new:robust_speech.models.modules.whisper_feat.WhisperLogMelSpectrogram
+    n_fft: !ref <n_fft>
+    n_mels: !ref <n_mels>
 
 train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
    save_file: !ref <train_log>
@@ -72,5 +74,6 @@ cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
 ser_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
    merge_tokens: True
 fp16: false
+language: spanish
 
 voting_module: null
