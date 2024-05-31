@@ -14,6 +14,7 @@ from robust_speech.models.seq2seq import S2SASR
 from robust_speech.models.ctc import CTCASR
 from robust_speech.models.modules.deepspeech import DeepspeechCTCASR
 from robust_speech.models.sb_hf_binding import HuggingFaceASR
+from robust_speech.models.canary import CanaryASR
 
 import robust_speech as rs
 from robust_speech.adversarial.attacks.attacker import TrainableAttacker
@@ -88,7 +89,8 @@ class UniversalAttack(TrainableAttacker):
         train_mode_for_backward=True,
         lr=0.001,
         time_universal=False,
-        univ_perturb=None
+        univ_perturb=None,
+        checkpointer=None,
     ):
         self.clip_min = clip_min
         self.clip_max = clip_max
@@ -104,25 +106,32 @@ class UniversalAttack(TrainableAttacker):
         self.train_mode_for_backward = train_mode_for_backward
         self.time_universal = time_universal
         self.rel_eps = torch.pow(torch.tensor(10.0), float(snr) / 20)
+        self.checkpointer = checkpointer
 
         self.univ_perturb = univ_perturb
         if self.univ_perturb is None:
             len_delta = MAXLEN_TIME if time_universal else MAXLEN
             self.univ_perturb = rs.adversarial.utils.TensorModule(
                 size=(len_delta,))
+        print(torch.norm(self.univ_perturb.tensor))
 
     def fit(self, loader):
         return self._compute_universal_perturbation(loader)
 
     def _compute_universal_perturbation(self, loader):
         if isinstance(self.asr_brain, S2SASR):
-            decode = self.asr_brain.tokenizer.decode_ids
+            tokenizer = self.asr_brain.tokenizer if self.asr_brain.tokenizer is not None else self.asr_brain.hparams.tokenizer
+            decode = tokenizer.decode_ids
         elif isinstance(self.asr_brain, DeepspeechCTCASR):
             decode = lambda x: x[0]
         elif isinstance(self.asr_brain, CTCASR):
-            decode = self.asr_brain.tokenizer.decode_ndim
+            tokenizer = self.asr_brain.tokenizer if self.asr_brain.tokenizer is not None else self.asr_brain.hparams.tokenizer
+            decode = tokenizer.decode_ndim
         elif isinstance(self.asr_brain, HuggingFaceASR):
-            decode = lambda x : self.asr_brain.tokenizer.decode(x, skip_special_tokens=True)
+            tokenizer = self.asr_brain.tokenizer if self.asr_brain.tokenizer is not None else self.asr_brain.hparams.tokenizer
+            decode = lambda x : tokenizer.decode(x, skip_special_tokens=True)
+        elif isinstance(self.asr_brain, CanaryASR):
+            decode = lambda x : x
         else:
             raise NotImplementedError
 
@@ -194,9 +203,16 @@ class UniversalAttack(TrainableAttacker):
 
                 # self.asr_brain.cer_metric.append(batch.id, predicted_words_adv, predicted_words_origin)
                 def cer_metric(id, ref, hyp):
+                    hyp = [['UNK'] if ((len(h) == 0) or ((len(h) == 1) and h[0]=='')) else h for h in hyp]
                     computer = self.asr_brain.hparams.cer_computer()
-                    computer.append(id, ref, hyp)
-                    return computer.summarize("error_rate")
+                    try:
+                        computer.append(id, ref, hyp)
+                        return computer.summarize("error_rate")
+                    except Exception as e:
+                        print(e)
+                        print(ref)
+                        print(hyp)
+                        return 100
                 CER = 0
                 # print(CER)
 
@@ -237,7 +253,7 @@ class UniversalAttack(TrainableAttacker):
                         decode(utt_seq).split(" ")
                         for utt_seq in predicted_tokens_adv
                     ]
-
+                    
                     CER = cer_metric(batch.id, predicted_words_origin,
                                      predicted_words_adv)
                     # print(CER)
@@ -300,9 +316,14 @@ class UniversalAttack(TrainableAttacker):
                     decode(utt_seq).split(" ")
                     for utt_seq in predicted_tokens_adv
                 ]
-                cer_computer.append(
-                    batch.id, predicted_words_origin, predicted_words_adv)
-
+                predicted_words_adv = [['UNK'] if ((len(h) == 0) or ((len(h) == 1) and h[0]=='')) else h for h in predicted_words_adv]
+                try:
+                    cer_computer.append(batch.id, predicted_words_origin,
+                                    predicted_words_adv)
+                except Exception as e:
+                    print(e)
+                    print(predicted_words_origin)
+                    print(predicted_words_adv)
                 total_sample += 1.
             success_rate = cer_computer.summarize("error_rate")
             print(f'SUCCESS RATE (CER) IS {success_rate:.4f}')
@@ -314,6 +335,7 @@ class UniversalAttack(TrainableAttacker):
                     self.univ_perturb.tensor.data = delta.detach()
                 print(
                     f"Perturbation vector with best success rate saved. Success rate:{best_success_rate:.2f}%")
+                self.checkpointer.save_checkpoint()
         print(
             f"Training finisihed. Best success rate: {best_success_rate:.2f}%")
 
