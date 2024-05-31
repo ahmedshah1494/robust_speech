@@ -142,7 +142,7 @@ def evaluate(hparams_file, run_opts, overrides):
         target = TargetGeneratorFromFixedTargets(
             target=hparams["target_sentence"])
     load_audio = hparams["load_audio"] if "load_audio" in hparams else None
-    save_audio_path = hparams["save_audio_path"] if (hparams["save_audio"] or hparams['load_audio']) else None
+    save_audio_path = hparams["save_audio_path"] if (getattr(hparams, "save_audio", False) or getattr(hparams, 'load_audio', False)) else None
     # Evaluation
     for k in test_datasets.keys():  # keys are test_clean, test_other etc
         target_brain.hparams.wer_file = os.path.join(
