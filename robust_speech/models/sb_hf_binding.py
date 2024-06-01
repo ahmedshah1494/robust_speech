@@ -110,7 +110,7 @@ class HuggingFaceASR(AdvASRBrain):
 
     def get_tokens(self, predictions):
         #text = predictions[1]["text"]
-        #tokens = torch.LongTensor([self.tokenizer.encode(text)])
+        #tokens = torch.LongTensor([tokenizer.encode(text)])
         if predictions[2] in [sb.Stage.VALID, sb.Stage.TEST]:
             tokens = predictions[1].cpu()
         else:
@@ -125,15 +125,15 @@ class HuggingFaceASR(AdvASRBrain):
         loss, pred_tokens, save_stage = predictions
 
         ids = batch.id
-
+        tokenizer = self.hparams.tokenizer
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
             # Decode token terms to words
-            predicted = [self.tokenizer.decode(t, skip_special_tokens=True).strip().upper().translate(
+            predicted = [tokenizer.decode(t, skip_special_tokens=True).strip().upper().translate(
                 str.maketrans('', '', string.punctuation)) for t in pred_tokens]
             # print(pred_tokens.shape)
-            # predicted_words = self.tokenizer.batch_decode(pred_tokens, skip_special_tokens=True).strip().upper().translate(
+            # predicted_words = tokenizer.batch_decode(pred_tokens, skip_special_tokens=True).strip().upper().translate(
             #     str.maketrans('', '', string.punctuation))
-            # predicted_words = [self.tokenizer.decode(
+            # predicted_words = [tokenizer.decode(
             #    t).strip() for t in pred_tokens]
             predicted_words = [wrd.split(" ") for wrd in predicted]
             target = [wrd.upper().translate(str.maketrans(
