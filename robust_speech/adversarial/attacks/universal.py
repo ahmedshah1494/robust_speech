@@ -109,11 +109,20 @@ class UniversalAttack(TrainableAttacker):
         self.checkpointer = checkpointer
 
         self.univ_perturb = univ_perturb
-        if self.univ_perturb is None:
+        if checkpointer is not None:
+            ckps = checkpointer.list_checkpoints()
+            self.nb_epochs = max(self.nb_epochs-len(ckps), 0)
+            print(f'Found {len(ckps)} checkpoints, reducing epochs to {self.nb_epochs}')
+            self.univ_perturb = checkpointer.recoverables['delta']
+            ckp = checkpointer.recover_if_possible()
+            print(f'Loaded checkpoint {ckp}')
+            if ckp is not None:
+                checkpointer.load_checkpoint(ckp)
+        elif self.univ_perturb is None:
             len_delta = MAXLEN_TIME if time_universal else MAXLEN
             self.univ_perturb = rs.adversarial.utils.TensorModule(
                 size=(len_delta,))
-        print(torch.norm(self.univ_perturb.tensor))
+        print("||delta|| =", torch.norm(self.univ_perturb.tensor))
 
     def fit(self, loader):
         return self._compute_universal_perturbation(loader)
