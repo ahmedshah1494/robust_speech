@@ -20,16 +20,6 @@ time_universal: False
 delta: !new:robust_speech.adversarial.utils.TensorModule
    size: (288000,)
 
-attack_class: !name:robust_speech.adversarial.attacks.universal.UniversalAttack
-  targeted: False
-  nb_epochs: !ref <nb_epochs>
-  nb_iter: !ref <nb_iter>
-  lr: !ref <lr>
-  snr: !ref <snr>
-  eps_item: !ref <eps_item>
-  time_universal: !ref <time_universal>
-  univ_perturb: !ref <delta>
-  order: !ref <order>
 save_audio: False
 attack_name: universal
 
@@ -52,11 +42,6 @@ wer_file: !ref <output_folder>/wer.txt
 save_folder: !ref <output_folder>
 log: !ref <output_folder>/log.txt
 save_audio_path: !ref <output_folder>/save
-
-checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
-   checkpoints_dir: !ref <output_folder>
-   recoverables:
-      delta: !ref <delta>
 
 dataset_prepare_fct: !name:robust_speech.data.librispeech.prepare_librispeech
 dataio_prepare_fct: !name:robust_speech.data.dataio.dataio_prepare
@@ -97,3 +82,19 @@ train_dataloader_opts:
 logger: !new:speechbrain.utils.train_logger.FileTrainLogger
     save_file: !ref <log>
     
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+   checkpoints_dir: !ref <output_folder>/<data_csv_name>
+   recoverables:
+      delta: !ref <delta>
+
+attack_class: !name:robust_speech.adversarial.attacks.universal.UniversalAttack
+  targeted: False
+  nb_epochs: !ref <nb_epochs>
+  nb_iter: !ref <nb_iter>
+  lr: !ref <lr>
+  snr: !ref <snr>
+  eps_item: !ref <eps_item>
+  time_universal: !ref <time_universal>
+  univ_perturb: !ref <delta>
+  order: !ref <order>
+  checkpointer: !ref <checkpointer>
