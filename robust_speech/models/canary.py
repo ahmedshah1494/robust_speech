@@ -65,6 +65,7 @@ class CanaryASR(AdvASRBrain):
         #         pred_tokens = result["logits"].argmax(dim=-1)
         # return loss.reshape(-1), pred_tokens
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
+        # print(input_ids)
         log_probs, encoded_len, enc_states, enc_mask = model.forward(
             input_signal=wavs, input_signal_length=wav_lens,
             processed_signal=feats, processed_signal_length=feat_lens,
@@ -157,7 +158,7 @@ class CanaryASR(AdvASRBrain):
         # Forward pass
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
             # Decode token terms to words
-            print(wrd, tokens, tok_len)
+            # print(wrd, tokens, tok_len)
             loss, pred_tokens = self.eval_forward(
                 feats=feats,
                 feat_lens=feat_lens,
