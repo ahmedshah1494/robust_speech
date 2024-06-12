@@ -48,8 +48,7 @@ def read_brains(
         )
         if "pretrainer" in brain_hparams:
             run_on_main(brain_hparams["pretrainer"].collect_files)
-            brain_hparams["pretrainer"].load_collected(
-                device=run_opts["device"])
+            brain_hparams["pretrainer"].load_collected()
         brain.tokenizer = tokenizer
     return brain
 
@@ -69,7 +68,7 @@ def fit(hparams_file, run_opts, overrides):
         # the tokenizer currently is loaded from the main hparams file and set
         # in all brain classes
         run_on_main(hparams["pretrainer"].collect_files)
-        hparams["pretrainer"].load_collected(device=run_opts["device"])
+        hparams["pretrainer"].load_collected()
 
     # Dataset prep (parsing Librispeech)
     prepare_dataset = hparams["dataset_prepare_fct"]
