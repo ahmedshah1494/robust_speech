@@ -49,23 +49,7 @@ class CanaryASR(AdvASRBrain):
             wavs = wavs.to(dtype)
         if feats is not None:
             feats = feats.to(dtype)
-        # with torch.no_grad():
-        #     result = model(
-        #         wavs.to(dtype), labels=tokens, **loss_options, **options)
-        #     loss = result["loss"].detach()
-        #     #logits = result["logits"]
-        #     #pred_tokens = logits.argmax(dim=-1)
-        #     if model.can_generate():
-        #         genkwargs = {}
-        #         if isinstance(self.hparams.processor, WhisperProcessor):
-        #             lang = getattr(self.hparams, "language", "english")
-        #             genkwargs['forced_decoder_ids'] = self.hparams.processor.get_decoder_prompt_ids(language=lang, task="transcribe")
-        #         pred_tokens = model.generate(wavs.to(dtype), **options, **genkwargs)
-        #     else:
-        #         pred_tokens = result["logits"].argmax(dim=-1)
-        # return loss.reshape(-1), pred_tokens
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
-        # print(input_ids)
         log_probs, encoded_len, enc_states, enc_mask = model.forward(
             input_signal=wavs, input_signal_length=wav_lens,
             processed_signal=feats, processed_signal_length=feat_lens,
@@ -93,14 +77,6 @@ class CanaryASR(AdvASRBrain):
                      tok_lens=None,
                      options=None,
                      loss_options=None):
-        # model: PreTrainedModel = self.modules.model
-        # result = model(wavs, labels=tokens, **loss_options, **options)
-        # loss = result["loss"]
-        # #logits = self.modules.whisper.model.transcribe(wavs[0], beam_size=1)
-        # logits = result["logits"]
-        # pred_tokens = logits.argmax(dim=-1)
-        # return loss.reshape(-1), pred_tokens
-
         model = self.modules.model.eval()
         dtype = torch.float16 if options.get("fp16", False) else torch.float32
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
@@ -179,8 +155,6 @@ class CanaryASR(AdvASRBrain):
         return loss, pred_tokens, stage
 
     def get_tokens(self, predictions):
-        #text = predictions[1]["text"]
-        #tokens = torch.LongTensor([self.tokenizer.encode(text)])
         if predictions[2] in [sb.Stage.VALID, sb.Stage.TEST]:
             tokens = predictions[1].cpu()
         else:
@@ -205,22 +179,12 @@ class CanaryASR(AdvASRBrain):
             tokens_lens = torch.cat([tokens_lens, tokens_lens], dim=0)
 
         if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
-            # Decode token terms to words
-            # predicted = [self.tokenizer.decode(t, skip_special_tokens=True).strip().upper().translate(
-            #     str.maketrans('', '', string.punctuation)) for t in pred_tokens]
-            # print(pred_tokens.shape)
-            # predicted_words = self.tokenizer.batch_decode(pred_tokens, skip_special_tokens=True).strip().upper().translate(
-            #     str.maketrans('', '', string.punctuation))
-            # predicted_words = [self.tokenizer.decode(
-            #    t).strip() for t in pred_tokens]
             predicted = [wrd.upper().translate(str.maketrans(
                 '', '', string.punctuation)) for wrd in predicted]
             predicted_words = [wrd.split(" ") for wrd in predicted]
             target = [wrd.upper().translate(str.maketrans(
                 '', '', string.punctuation)) for wrd in batch.wrd]
             target_words = [wrd.split(" ") for wrd in target]
-            #target_words = [wrd.split(" ") for wrd in batch.wrd]
-            # print(predicted_words, target_words)
 
             if adv:
                 if targeted:
@@ -242,9 +206,6 @@ class CanaryASR(AdvASRBrain):
                 self.wer_metric.append(ids, predicted_words, target_words)
                 self.cer_metric.append(ids, predicted_words, target_words)
                 print('cer =', self.cer_metric.summarize())
-            # if adv and targeted:
-                # print(" ".join(predicted_words[0]))
-                #print(" ".join(target_words[0]))
         if reduction == 'mean':
             loss = loss.mean()
         return loss

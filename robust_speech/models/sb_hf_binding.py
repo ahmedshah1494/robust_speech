@@ -28,6 +28,9 @@ class HuggingFaceASR(AdvASRBrain):
             self.modules.model.load_adapter(self.hparams.language, force_reload=False)
 
     def eval_forward(self, wavs, tokens, options, loss_options):
+        '''
+        Forward pass for evaluation
+        '''
         model: PreTrainedModel = self.modules.model
         dtype = torch.float16 if options.get("fp16", False) else torch.float32
         with torch.no_grad():
@@ -47,6 +50,9 @@ class HuggingFaceASR(AdvASRBrain):
         return loss.reshape(-1), pred_tokens
     
     def train_attack_forward(self, wavs, tokens, options, loss_options):
+        '''
+        Forward pass for training and attack
+        '''
         model: PreTrainedModel = self.modules.model
         result = model(wavs, labels=tokens, **loss_options, **options)
         loss = result["loss"]
@@ -77,7 +83,6 @@ class HuggingFaceASR(AdvASRBrain):
                 tokens_eos = torch.LongTensor([t + [self.hparams["eos_index"]] for t in tokens_list]).to(self.device)
             tokens = torch.LongTensor(tokens_list).to(self.device)
 
-        # wavs, wav_lens = wavs.to(self.device), wav_lens.to(self.device)
         # Add augmentation if specified
         options = {}
         loss_options = {}
@@ -109,8 +114,6 @@ class HuggingFaceASR(AdvASRBrain):
         return loss, pred_tokens, stage
 
     def get_tokens(self, predictions):
-        #text = predictions[1]["text"]
-        #tokens = torch.LongTensor([tokenizer.encode(text)])
         if predictions[2] in [sb.Stage.VALID, sb.Stage.TEST]:
             tokens = predictions[1].cpu()
         else:
@@ -130,17 +133,10 @@ class HuggingFaceASR(AdvASRBrain):
             # Decode token terms to words
             predicted = [tokenizer.decode(t, skip_special_tokens=True).strip().upper().translate(
                 str.maketrans('', '', string.punctuation)) for t in pred_tokens]
-            # print(pred_tokens.shape)
-            # predicted_words = tokenizer.batch_decode(pred_tokens, skip_special_tokens=True).strip().upper().translate(
-            #     str.maketrans('', '', string.punctuation))
-            # predicted_words = [tokenizer.decode(
-            #    t).strip() for t in pred_tokens]
             predicted_words = [wrd.split(" ") for wrd in predicted]
             target = [wrd.upper().translate(str.maketrans(
                 '', '', string.punctuation)) for wrd in batch.wrd]
             target_words = [wrd.split(" ") for wrd in target]
-            #target_words = [wrd.split(" ") for wrd in batch.wrd]
-            #print(predicted_words, target_words)
 
             if adv:
                 if targeted:
@@ -162,9 +158,6 @@ class HuggingFaceASR(AdvASRBrain):
                 self.wer_metric.append(ids, predicted_words, target_words)
                 self.cer_metric.append(ids, predicted_words, target_words)
                 print('cer =', self.cer_metric.summarize())
-            # if adv and targeted:
-                # print(" ".join(predicted_words[0]))
-                #print(" ".join(target_words[0]))
         if reduction == 'mean':
             loss = loss.mean()
         return loss
