@@ -1,24 +1,7 @@
-
-import logging
-import os
-import sys
-
-import speechbrain as sb
+from robust_speech.models.base_robust_speech_model import BaseASR
 import torch
-import torch.nn as nn
-import string
-from transformers import PreTrainedModel, WhisperProcessor, Wav2Vec2ForCTC
-import librosa
 
-import robust_speech as rs
-from robust_speech.adversarial.brain import AdvASRBrain
-from typing import Optional, Union
-
-logger = logging.getLogger(__name__)
-
-
-# Define training procedure
-class CanaryASR(AdvASRBrain):
+class CanaryASR(BaseASR):
     """
     HuggingFace ASR model
     """
@@ -35,8 +18,6 @@ class CanaryASR(AdvASRBrain):
 
 
     def eval_forward(self,
-                     wavs=None,
-                     wav_lens=None,
                      feats=None,
                      feat_lens=None,
                      tokens=None,
@@ -45,13 +26,10 @@ class CanaryASR(AdvASRBrain):
                      loss_options=None):
         model = self.modules.model
         dtype = torch.float16 if options.get("fp16", False) else torch.float32
-        if wavs is not None:
-            wavs = wavs.to(dtype)
-        if feats is not None:
-            feats = feats.to(dtype)
+        feats = feats.to(dtype)
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
         log_probs, encoded_len, enc_states, enc_mask = model.forward(
-            input_signal=wavs, input_signal_length=wav_lens,
+            input_signal=None, input_signal_length=None,
             processed_signal=feats, processed_signal_length=feat_lens,
             transcript=input_ids, transcript_length=tok_lens
         )
@@ -69,8 +47,6 @@ class CanaryASR(AdvASRBrain):
         return loss, beam_hypotheses
     
     def train_attack_forward(self,
-                     wavs=None,
-                     wav_lens=None,
                      feats=None,
                      feat_lens=None,
                      tokens=None,
@@ -80,12 +56,9 @@ class CanaryASR(AdvASRBrain):
         model = self.modules.model.eval()
         dtype = torch.float16 if options.get("fp16", False) else torch.float32
         input_ids, labels = tokens[:, :-1], tokens[:, 1:]
-        if wavs is not None:
-            wavs = wavs.to(dtype)
-        if feats is not None:
-            feats = feats.to(dtype)
+        feats = feats.to(dtype)
         log_probs, encoded_len, enc_states, enc_mask = model.forward(
-            input_signal=wavs, input_signal_length=wav_lens,
+            input_signal=None, input_signal_length=None,
             processed_signal=feats, processed_signal_length=feat_lens,
             transcript=input_ids, transcript_length=tok_lens
         )
@@ -94,137 +67,18 @@ class CanaryASR(AdvASRBrain):
         pred_tokens = log_probs.argmax(dim=-1)
         return loss, pred_tokens
 
-    def compute_forward(self, batch, stage):
-        """Forward computations from the waveform batches to the output probabilities."""
-        if not stage == sb.Stage.TRAIN:
-            self.modules = self.modules.eval()
-        if not stage == rs.Stage.ATTACK:
-            batch = batch.to(self.device)
-        wavs, _ = batch.sig
-        wav_lens = torch.LongTensor([len(w) for w in wavs]).to(self.device)
+    def text_to_tokens(self, batch):
         tokenizer = self.modules.model.tokenizer
         wrd = batch.wrd
         tokens = [tokenizer.text_to_ids(w, getattr(self.hparams, 'language', 'en')) for w in wrd]
         tok_len = torch.LongTensor([len(t) for t in tokens]).to(self.device)
         max_len = max(tok_len)
         tokens = torch.stack([torch.nn.functional.pad(torch.LongTensor(t), (0, max_len - len(t)), value=tokenizer.pad) for t in tokens]).to(self.device)
-        tokens_bos = tokenizer.bos
+        return tokens, tok_len
 
-
-        # Add augmentation if specified
-        options = {}
-        loss_options = {}
-        if options.get("fp16", False):
-            self.modules.to(torch.float16)
-        dtype = torch.float16 if options.get("fp16", False) else torch.float32
-
-        if hasattr(self.hparams, "smoothing") and self.hparams.smoothing:
-            wavs = self.hparams.smoothing(wavs, wav_lens)
-        if stage == sb.Stage.TRAIN or stage == rs.Stage.ATTACK:
-            if hasattr(self.modules, "env_corrupt"):
-                wavs_noise = self.modules.env_corrupt(wavs, wav_lens)
-                wavs = torch.cat([wavs, wavs_noise], dim=0)
-                wav_lens = torch.cat([wav_lens, wav_lens])
-                tokens_bos = torch.cat([tokens_bos, tokens_bos], dim=0)
-
-            if hasattr(self.hparams, "augmentation"):
-                wavs = self.hparams.augmentation(wavs, wav_lens)
-        
-        feats, feat_lens = self.hparams.compute_features(wavs, wav_lens) if self.hparams.compute_features is not None else wavs
-        # Forward pass
-        if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
-            # Decode token terms to words
-            # print(wrd, tokens, tok_len)
-            loss, pred_tokens = self.eval_forward(
-                feats=feats,
-                feat_lens=feat_lens,
-                tokens=tokens,
-                tok_lens=tok_len,
-                options=options,
-                loss_options=loss_options
-            )
-        else:
-            loss, pred_tokens = self.train_attack_forward(
-                feats=feats,
-                feat_lens=feat_lens,
-                tokens=tokens,
-                tok_lens=tok_len,
-                options=options,
-                loss_options=loss_options
-            )
-        return loss, pred_tokens, stage
-
-    def get_tokens(self, predictions):
-        if predictions[2] in [sb.Stage.VALID, sb.Stage.TEST]:
-            tokens = predictions[1].cpu()
-        else:
-            tokens = predictions[1][:, :-1].cpu()
-        return tokens
-
-    def compute_objectives(
-        self, predictions, batch, stage, adv=False, targeted=False, reduction="mean"
-    ):
-        """Computes the loss (CTC+NLL) given predictions and targets."""
-
-        loss, predicted, save_stage = predictions
-
-        ids = batch.id
-        if hasattr(self.modules, "env_corrupt") and stage == sb.Stage.TRAIN:
-            tokens, tokens_lens = batch.tokens
-            tokens_eos, tokens_eos_lens = batch.tokens_eos
-            tokens_eos = torch.cat([tokens_eos, tokens_eos], dim=0)
-            tokens_eos_lens = torch.cat(
-                [tokens_eos_lens, tokens_eos_lens], dim=0)
-            tokens = torch.cat([tokens, tokens], dim=0)
-            tokens_lens = torch.cat([tokens_lens, tokens_lens], dim=0)
-
-        if stage != sb.Stage.TRAIN and stage != rs.Stage.ATTACK:
-            predicted = [wrd.upper().translate(str.maketrans(
-                '', '', string.punctuation)) for wrd in predicted]
-            predicted_words = [wrd.split(" ") for wrd in predicted]
-            target = [wrd.upper().translate(str.maketrans(
-                '', '', string.punctuation)) for wrd in batch.wrd]
-            target_words = [wrd.split(" ") for wrd in target]
-
-            if adv:
-                if targeted:
-                    self.adv_wer_metric_target.append(
-                        ids, predicted_words, target_words
-                    )
-                    self.adv_cer_metric_target.append(
-                        ids, predicted, target
-                    )
-                    self.adv_ser_metric_target.append(
-                        ids, predicted, target)
-                else:
-                    self.adv_wer_metric.append(
-                        ids, predicted_words, target_words)
-                    self.adv_cer_metric.append(
-                        ids, predicted_words, target_words)
-                print('adv_cer =', self.adv_cer_metric.summarize())
-            else:
-                self.wer_metric.append(ids, predicted_words, target_words)
-                self.cer_metric.append(ids, predicted_words, target_words)
-                print('cer =', self.cer_metric.summarize())
-        if reduction == 'mean':
-            loss = loss.mean()
-        return loss
-
-    def init_optimizers(self):
-        "Initializes the optimizer and model optimizer"
-        self.optimizer = self.hparams.opt_class(
-            self.hparams.model.parameters()
-        )
-
-        if self.checkpointer is not None:
-            self.checkpointer.add_recoverable("optimizer", self.optimizer)
-    
-    def on_stage_end(self, stage, stage_loss, epoch, stage_adv_loss=None, stage_adv_loss_target=None):
-        super().on_stage_end(stage, stage_loss, epoch, stage_adv_loss, stage_adv_loss_target)
-        if stage == sb.Stage.TEST:
-            with open(self.hparams.wer_file.replace("wer", "cer"), "w") as cer:
-                self.cer_metric.write_stats(cer)
-            with open(f'{self.hparams.wer_file.replace("wer", "cer_adv")}', "w") as cer:
-                self.adv_cer_metric.write_stats(cer)
-            with open(f'{self.hparams.wer_file.replace("wer", "wer_adv")}', "w") as wer:
-                self.adv_wer_metric.write_stats(wer)
+    def wav_to_feats(self, batch):
+        wavs, _ = batch.sig
+        wav_lens = torch.LongTensor([len(w) for w in wavs]).to(self.device)
+        wavs, _ = batch.sig
+        feats, feat_lens = self.hparams.compute_features(wavs, wav_lens)
+        return feats, feat_lens
