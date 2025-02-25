@@ -14,7 +14,6 @@ from robust_speech.models.seq2seq import S2SASR
 from robust_speech.models.ctc import CTCASR
 from robust_speech.models.modules.deepspeech import DeepspeechCTCASR
 from robust_speech.models.sb_hf_binding import HuggingFaceASR
-from robust_speech.models.canary import CanaryASR
 
 import robust_speech as rs
 from robust_speech.adversarial.attacks.attacker import TrainableAttacker
@@ -139,10 +138,9 @@ class UniversalAttack(TrainableAttacker):
         elif isinstance(self.asr_brain, HuggingFaceASR):
             tokenizer = self.asr_brain.tokenizer if self.asr_brain.tokenizer is not None else self.asr_brain.hparams.tokenizer
             decode = lambda x : tokenizer.decode(x, skip_special_tokens=True)
-        elif isinstance(self.asr_brain, CanaryASR):
-            decode = lambda x : x
         else:
-            raise NotImplementedError
+            print(f"WARNING: Brain class not in [S2SASR, DeepspeechCTCASR, CTCASR, HuggingFaceASR]. Assuming decoding is performed in the brain class. Setting decode to identity function.")
+            decode = lambda x : x
 
         if self.train_mode_for_backward:
             self.asr_brain.module_train()
@@ -243,7 +241,7 @@ class UniversalAttack(TrainableAttacker):
                         self.asr_brain.device)
                     loss = 0.5 * l2_norm + ctc
                     # loss = ctc
-                    loss.backward()
+                    loss.backward(inputs=r)
                     # print(l2_norm,ctc,CER)
                     grad_sign = r.grad.data.sign()
                     r.data = r.data - self.lr * grad_sign
